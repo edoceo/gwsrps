@@ -9,14 +9,12 @@ import "flag"
 import "fmt"
 import "net/http"
 import "path/filepath"
+import "sync"
 
 import "github.com/gorilla/websocket"
 
 type WS_Client_List struct {
-
-	client_list map[*WS_Client]
-
-
+	client_list map[*WS_Client]bool
 }
 
 type WS_Client struct {
@@ -122,17 +120,31 @@ func main() {
 
 	})
 
+	// Start Servers in a WaitGroup
+
+	swg := &sync.WaitGroup{}
+
+
 	// TCP Listener
-	//err := null
-	// err := http.ListenAndServeTLS(*tlsListen, *tlsPemFile, *tlsKeyFile, nil)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	swg.Add(1)
+	go func() {
+		err := http.ListenAndServeTLS(*tlsListen, *tlsPemFile, *tlsKeyFile, nil)
+		if err != nil {
+			panic(err)
+		}
+		swg.Done()
+	}()
 
-	err108 := http.ListenAndServe(*tcpListen, nil)
-	if err108 != nil {
-		panic(err108)
-	}
+	// TLS Listener
+	swg.Add(1)
+	go func() {
+		err := http.ListenAndServe(*tcpListen, nil)
+		if err != nil {
+			panic(err)
+		}
+		swg.Done()
+	}()
 
+	swg.Wait()
 
 }
