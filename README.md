@@ -10,11 +10,17 @@ It will connect to the given Redis server and do PubSub things.
 
 ## Enable SSL/TLS
 
-Please do this
+Please do this but use proper SSL Certificates
+
+    openssl genrsa -out server.key 2048
+    openssl req -new -x509 -sha256 -key server.key -out server.pem -days 3650
 
 
 ## See Also
 
+ * https://github.com/gorilla/websocket
+ * https://github.com/gorilla/websocket/tree/master/examples/chat
  * https://godoc.org/github.com/go-redis/redis
  * https://gist.github.com/miguelmota/ca4a7a66d8a7b014fad09d17df4b6e18
  * https://github.com/go-redis/redis
+ * https://hackernoon.com/communicating-go-applications-through-redis-pub-sub-messaging-paradigm-df7317897b13
