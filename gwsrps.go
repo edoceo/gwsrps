@@ -7,11 +7,14 @@ package main
 import "os"
 import "flag"
 import "fmt"
+import "time"
+import "math/rand"
 import "net/http"
 import "path/filepath"
 import "sync"
 
 import "github.com/gorilla/websocket"
+import "github.com/oklog/ulid"
 
 type WS_Client_List struct {
 	client_list map[*WS_Client]bool
@@ -22,6 +25,15 @@ type WS_Client struct {
 	ws *websocket.Conn
 	pump chan []byte
 }
+
+func generateULID() string {
+	t := time.Unix(1000000, 0)
+	entropy := ulid.Monotonic(rand.New(rand.NewSource(t.UnixNano())), 0)
+	u, _ := ulid.New(ulid.Timestamp(t), entropy)
+	return u.String()
+	// Output: 0000XSNJG0MQJHBF4QX1EFD6Y3
+}
+
 
 /**
  * Read Message from WebSocket, Publish to Redis
@@ -97,10 +109,18 @@ func main() {
 	// Fork to Background
 
 
+	// Static Files
+	http.Handle("/", http.FileServer(http.Dir(dir)))
+
 	// HTTP Handler
 	http.HandleFunc(*path, func(w http.ResponseWriter, r *http.Request) {
 
-		fmt.Println("HTTP Connection, Should Upgrade")
+		// fmt.Println("HTTP Connection, Should Upgrade")
+
+		ws_upgrader.CheckOrigin = func(r *http.Request) bool {
+			good, _ := filepath.Match(*origin, r.Host)
+			return good
+		}
 
 		ws, err := ws_upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -108,8 +128,10 @@ func main() {
 			return
 		}
 
-		client := &WS_Client{ id: "01DC368R53J7BT955PZGTYRMHT", ws: ws, pump: make(chan []byte, 256) }
+		cid := generateULID()
+		client := &WS_Client{ id: cid, ws: ws, pump: make(chan []byte, 256) }
 
+		fmt.Println("New Client:", cid)
 		// client.hub.register <- client
 		fmt.Println(client)
 
