@@ -17,140 +17,8 @@ import "github.com/gorilla/websocket"
 import "github.com/go-redis/redis"
 import "github.com/oklog/ulid"
 
-// type WS_Client_List struct {
-// 	client_list map[*WS_Client]int
-// }
 
-type WS_Client struct {
-	id string
-	ws *websocket.Conn
-	pub *redis.Client
-	sub *redis.PubSub
-	pump chan []byte
-}
-
-/**
- * Read Message from WebSocket, Publish to Redis
- * @param {[type]} wsc [description]
- * @return {[type]} [description]
- */
-func (c *WS_Client) incomingPump() {
-
-	defer func() {
-		// c.hub.unregister <- c
-		fmt.Println("incomingPump - defer")
-		c.ws.Close()
-		// c.pub.Close()
-		c.sub.Close()
-	}()
-
-	pongWait := 60 * time.Second
-
-	c.ws.SetReadLimit(32768)
-
-	c.ws.SetReadDeadline(time.Now().Add(pongWait))
-	c.ws.SetPongHandler(func(string) error { c.ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
-
-	for {
-		msgType, msgBody, err := c.ws.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				fmt.Printf("error: %v", err)
-			}
-			break
-		}
-
-		switch (msgType) {
-		case websocket.TextMessage:
-			fmt.Println("incoming-ws:", string(msgBody))
-			// fmt.Println("Text Message")
-			break;
-		case websocket.BinaryMessage:
-			fmt.Println("Data Message")
-			break;
-		}
-
-		// message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		// c.hub.broadcast <- message
-		c.pub.Publish("gwsrps", msgBody)
-	}
-
-}
-
-/**
- * Send Message to WebSocket
- * @param {[type]} wsc [description]
- * @return {[type]} [description]
- */
-func (c *WS_Client) outgoingPump() {
-
-	sendWait := 8 * time.Second
-	pingWait := 60 * time.Second * 9 / 10
-
-	tick := time.NewTicker(pingWait)
-
-	defer func() {
-		fmt.Println("outgoingPump - defer")
-		// c.hub.unregister <- c
-		tick.Stop()
-		c.ws.Close()
-		//c.pub.Close()
-		c.sub.Close()
-	}()
-
-
-	for {
-		fmt.Println("Line 098")
-		select {
-		case msgBody, ok := <- c.pump:
-
-			fmt.Println("outgoing-gws:", string(msgBody))
-
-			c.ws.SetWriteDeadline(time.Now().Add(sendWait))
-
-			if !ok {
-				// The hub closed the channel.
-				c.ws.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-
-			w, err := c.ws.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(msgBody)
-
-			// // Add queued chat messages to the current websocket message.
-			// n := len(c.pump)
-			// for i := 0; i < n; i++ {
-			// 	w.Write(newline)
-			// 	w.Write(<-c.pump)
-			// }
-
-			// Close Error, Kill It
-			err112 := w.Close()
-			if err112 != nil {
-				return
-			}
-
-			break
-
-		case <-tick.C:
-
-			c.ws.SetWriteDeadline(time.Now().Add(sendWait))
-			err127 := c.ws.WriteMessage(websocket.PingMessage, nil)
-			if err127 != nil {
-				return
-			}
-
-		}
-	}
-
-}
-
-// var gPubSubConn *redis.PubSubConn
-//     gPubSubConn = &redis.PubSubConn{Conn: conn}
-
+// I like these as IDs
 func generateULID() string {
 	t := time.Now()
 	entropy := ulid.Monotonic(rand.New(rand.NewSource(t.UnixNano())), 0)
@@ -165,9 +33,13 @@ var ws_upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+
 var client_list = make(map[*WS_Client]int64)
 
 
+/**
+ * Main
+ */
 func main() {
 
 	cmd, _ := os.Executable()
@@ -220,13 +92,14 @@ func main() {
 		}
 		// defer ws.Close()
 
-		cid := generateULID()
-		client := &WS_Client{ id: cid, ws: ws }
+		client := &WS_Client{
+			id: generateULID(),
+			ws: ws,
+			// pump: make(chan []byte),
+			stat: "live",
+		}
 
 		client_list[ client ] = time.Now().Unix()
-
-		// client.hub.register <- client
-		// fmt.Println(client)
 
 		// Connect to Redis
 		rdbc := redis.NewClient(&redis.Options{
@@ -238,27 +111,12 @@ func main() {
 		client.pub = rdbc
 
 		client.sub = rdbc.Subscribe("gwsrps")
-		_, err142 := client.sub.Receive()
-		if (err142 != nil) {
-			panic(err142)
-		}
-
-		// Allow collection of memory referenced by the caller by doing all work in
-		// new goroutines.
 
 		// Read the PubSub and Forward to Pump
-		go client.incomingPump()
-		go client.outgoingPump()
+		go client.pumpWebSocketToRedis();
+		go client.pumpRedisToWebSocket()
 
-		go func() {
-			for {
-				var msg, _ = client.sub.ReceiveMessage()
-				fmt.Println("incoming-ps:", msg)
-				client.pump <- []byte(msg.Payload)
-			}
-		}()
-
-		fmt.Println("New Client:", cid, "Clients:", len(client_list))
+		fmt.Println("New Client:", client.id, "Clients:", len(client_list))
 
 	})
 
@@ -287,7 +145,6 @@ func main() {
 	}()
 
 	// Fork to Background
-
 
 	swg.Wait()
 
