@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<head>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha256-YLGeXaapI0/5IgZopewRJcFXomhRMlYYjugPLSyNjTY=" crossorigin="anonymous" />
+<title>gwsrps test</title>
+<style>
+textarea.form-control {
+	height: 20vh;
+}
+</style>
+</head>
+<body>
+<div class="container-fluid mt-4">
+
+<h2>Go/WebSocket + Redis/PubSub Test</h2>
+
+<div class="row">
+	<div class="col">
+		<h2>Client A TCP
+			<button class="btn btn-sm btn-outline-primary btn-open" data-id="a">Open</button>
+			<button class="btn btn-sm btn-outline-primary btn-shut" data-id="a">Shut</button>
+		</h2>
+		<textarea class="form-control" id="client-a-output"></textarea>
+		<div class="input-group">
+			<input class="form-control client-input" data-id="a">
+			<div class="input-group-append">
+				<button class="btn btn-outline-success">&raquo;</button>
+			</div>
+		</div>
+	</div>
+	<div class="col">
+		<h2>Client B TCP
+			<button class="btn btn-sm btn-outline-primary btn-open" data-id="b">Open</button>
+			<button class="btn btn-sm btn-outline-primary btn-shut" data-id="b">Shut</button>
+		</h2>
+		<textarea class="form-control" id="client-b-output"></textarea>
+		<div class="input-group">
+			<input class="form-control client-input" data-id="b">
+			<div class="input-group-append">
+				<button class="btn btn-outline-success">&raquo;</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="row">
+	<div class="col">
+		<h2>Client C TLS
+			<button class="btn btn-sm btn-outline-primary btn-open" data-id="c">Open</button>
+			<button class="btn btn-sm btn-outline-primary btn-shut" data-id="c">Shut</button>
+		</h2>
+		<textarea class="form-control" id="client-c-output"></textarea>
+		<div class="input-group">
+			<input class="form-control client-input" data-id="c">
+			<div class="input-group-append">
+				<button class="btn btn-outline-success">&raquo;</button>
+			</div>
+		</div>
+	</div>
+	<div class="col">
+		<h2>Client D TLS
+			<button class="btn btn-sm btn-outline-primary btn-open" data-id="d">Open</button>
+			<button class="btn btn-sm btn-outline-primary btn-shut" data-id="d">Shut</button>
+		</h2>
+		<textarea class="form-control" id="client-d-output"></textarea>
+		<div class="input-group">
+			<input class="form-control client-input" data-id="d">
+			<div class="input-group-append">
+				<button class="btn btn-outline-success">&raquo;</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+
+</div>
+
+<!--
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zepto/1.2.0/zepto.min.js" integrity="sha256-vrn14y7WH7zgEElyQqm2uCGSQrX/xjYDjniRUQx3NyU=" crossorigin="anonymous"></script>
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+<script>
+
+// Client List
+var ws_list = {}
+
+$('.btn-open').on('click', function() {
+
+	var wscX = {};
+
+	wscX.c = $(this).data('id');
+
+	if (ws_list[ wscX.c ]) {
+		ws_list[ wscX.c ].ws.close();
+		ws_list[ wscX.c ] = null;
+	}
+
+	switch (wscX.c) {
+	case 'a':
+		wscX.ws = new WebSocket("ws://localhost:8080/ws");
+		wscX.log = $('#client-a-output');
+		break;
+	case 'b':
+		wscX.ws = new WebSocket("ws://localhost:8080/ws");
+		wscX.log = $('#client-b-output');
+		break;
+	case 'c':
+		wscX.ws = new WebSocket("wss://localhost:8443/ws");
+		wscX.log = $('#client-c-output');
+		break;
+	case 'd':
+		wscX.ws = new WebSocket("wss://localhost:8443/ws");
+		wscX.log = $('#client-d-output');
+		break;
+	}
+
+	wscX.ws.onopen = function() {
+		wscX.log.prepend("OPEN\n");
+		wscX.ws.send("open-from-ws-client-" + wscX.c);
+	}
+
+	wscX.ws.onmessage = function(e) {
+		wscX.log.prepend('onmessage(' + wscX.c + ')="' + e.data + '"\n');
+	}
+
+	wscX.ws.onerror = function(e) {
+		console.log(e);
+		wscX.log.prepend('FAIL\n');
+	}
+
+	wscX.ws.onclose = function(e) {
+		//console.log(e);
+		wscX.log.prepend('SHUT\n');
+	}
+
+	ws_list[ wscX.c ] = wscX;
+
+});
+
+$('.btn-shut').on('click', function() {
+
+	var c = $(this).data('id');
+
+	if (ws_list[ c ]) {
+		ws_list[ c ].ws.close();
+		ws_list[ c ] = null;
+	}
+
+});
+
+$('.client-input').on('keypress', function(e) {
+	if (13 == e.which) {
+		var $node = $(this)
+		var c = $node.data('id');
+		var t = $node.val();
+		var ws = ws_list[c];
+		if (ws) {
+			if (ws.ws) {
+				ws.ws.send(t);
+			}
+		}
+		$node.val('');
+	}
+});
+
+
+</script>
+
+</body>
+</html>
