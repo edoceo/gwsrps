@@ -7,6 +7,7 @@ package main
 import "os"
 import "flag"
 import "fmt"
+import "strings"
 import "time"
 import "math/rand"
 import "net/http"
@@ -60,7 +61,7 @@ func main() {
 	tlsPemFile := flag.String("tls-pem-file", "server.pem", "Stuff")
 	tlsKeyFile := flag.String("tls-key-file", "server.key", "Stuff")
 	origin    := flag.String("origin", "*", "Only allow these origins")
-	path      := flag.String("path", "/ws", "What path is the WebSocket in?")
+	//path      := flag.String("path", "/ws", "What path is the WebSocket in?")
 
 	flag.Parse()
 
@@ -72,19 +73,34 @@ func main() {
 	fmt.Println("Origin:", *origin)
 
 	// Static Files
-	http.Handle("/", http.FileServer(http.Dir(dir)))
+	// http.Handle("/", http.FileServer(http.Dir(dir)))
 
 
 	// HTTP Handler
-	http.HandleFunc(*path, func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 
-		// fmt.Println("HTTP Connection, Should Upgrade")
+		is_ws := false
+		for _, header := range r.Header["Upgrade"] {
+			if header == "websocket" {
+				is_ws = true
+				break
+			}
+		}
 
+		if (!is_ws) {
+			// Serve Static File
+			http.ServeFile(w, r, "index.html")
+			return
+		}
+
+		// Verify Origin
 		ws_upgrader.CheckOrigin = func(r *http.Request) bool {
+			// Filepath Match? Should we use RegEx?
 			good, _ := filepath.Match(*origin, r.Host)
 			return good
 		}
 
+		// Upgrade
 		ws, err := ws_upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			fmt.Println(err)
@@ -92,10 +108,17 @@ func main() {
 		}
 		// defer ws.Close()
 
+
+		// Check *path and use that as the subscribe channel
+		path := strings.Trim(r.URL.Path, "/");
+		fmt.Println("Requst Page", path)
+
+
+		// Start our Client Session Object
 		client := &WS_Client{
 			id: generateULID(),
 			ws: ws,
-			// pump: make(chan []byte),
+			path: path,
 			stat: "live",
 		}
 
@@ -121,7 +144,6 @@ func main() {
 	})
 
 	// Start Servers in a WaitGroup
-
 	swg := &sync.WaitGroup{}
 
 	// TCP Listener
@@ -143,8 +165,6 @@ func main() {
 		}
 		swg.Done()
 	}()
-
-	// Fork to Background
 
 	swg.Wait()
 

@@ -4,20 +4,20 @@
 
 package main
 
-import "fmt"
-import "time"
-
-import "github.com/gorilla/websocket"
-import "github.com/go-redis/redis"
-
+import (
+	"fmt"
+	"time"
+	"github.com/gorilla/websocket"
+	"github.com/go-redis/redis"
+)
 
 type WS_Client struct {
 	id string
 	ws *websocket.Conn
 	pub *redis.Client
 	sub *redis.PubSub
+	path string // Path in URL == Channel in PubSub
 	stat string
-	// pump chan []byte
 }
 
 
@@ -32,16 +32,15 @@ func (c *WS_Client) kill() {
 
 	c.stat = "dead"
 
-	// close(c.pump)
-
 	// Close Sockets
 	c.ws.Close()
 	c.pub.Close()
 	c.sub.Close()
 
-	fmt.Println("gr_client-killed")
-
 	delete(client_list, c)
+
+	fmt.Println("gwsrps_client-dead")
+
 }
 
 
@@ -63,12 +62,12 @@ func (c *WS_Client) pumpRedisToWebSocket() {
 
 	for {
 
-		fmt.Println("pumpRedisToWebSocket-wait")
+		//fmt.Println("pumpRedisToWebSocket-wait")
 
 		select {
 		case msg, ret := <- rch:
 
-			fmt.Println("pumpRedisToWebSocket-pump!")
+			// fmt.Println("pumpRedisToWebSocket-pump!")
 			if !ret {
 				fmt.Println("pumpRedisToWebSocket-fail", ret)
 				return
@@ -80,7 +79,7 @@ func (c *WS_Client) pumpRedisToWebSocket() {
 				return
 			}
 
-			fmt.Println("pumpRedisToWebSocket-send", msg.Payload)
+			// fmt.Println("pumpRedisToWebSocket-send", msg.Payload)
 			w.Write([]byte(msg.Payload))
 			err085 := w.Close();
 			if err085 != nil {
@@ -88,16 +87,10 @@ func (c *WS_Client) pumpRedisToWebSocket() {
 			}
 
 		case <-waitTick.C:
-			//
-			fmt.Println("pumpRedisToWebSocket-tick!")
+			// Timeout! Restart Loop
+			//fmt.Println("pumpRedisToWebSocket-tick!")
 			waitTick = time.NewTicker(60 * time.Second)
-
 		}
-
-		// fmt.Println("wait-pump")
-		// txt := <- c.pump
-		// fmt.Println("read-pump")
-		// fmt.Println(txt)
 
 	}
 
@@ -128,9 +121,9 @@ func (c *WS_Client) pumpWebSocketToRedis() {
 
 	for {
 
-		fmt.Println("pumpWebSocketToRedis-pump")
+		// fmt.Println("pumpWebSocketToRedis-pump")
 
-		msgType, msgBody, err249 := c.ws.ReadMessage()
+		_, msgBody, err249 := c.ws.ReadMessage()
 		if err249 != nil {
 			fmt.Println("pumpWebSocketToRedis-fail", err249)
 			// if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -144,17 +137,6 @@ func (c *WS_Client) pumpWebSocketToRedis() {
 
 		c.pub.Publish("gwsrps", msgBody)
 
-	// 	select {
-	// 	case msg, ret := <- c.pump:
-	// 		if !ret {
-	//
-	// 		}
-	// 	case <-waitTick.C:
-	// 		//
-	// 	}
-	// 	txt := <- c.pump
-	// 	fmt.Println("read-pump")
-	// 	fmt.Println(txt)
 	}
 
 }
